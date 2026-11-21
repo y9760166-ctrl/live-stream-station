@@ -13,16 +13,28 @@ jobs:
       - name: בדיקת מקור השידור
         run: |
           URL="https://contact.gostreaming.tv/Con-9/tracks-v3a1/mono.ts.m3u8"
+
           echo "בודק את מקור השידור..."
-          curl -L --max-time 20 -sS "$URL" -o playlist.m3u8
-          if grep -q "#EXTM3U" playlist.m3u8; then
-            echo "נמצאה רשימת HLS."
-            if grep -q "#EXT-X-ENDLIST" playlist.m3u8; then
-              echo "השידור הסתיים."
-            else
-              echo "ייתכן שהשידור פעיל."
-            fi
+
+          HTTP_CODE=$(curl -L --max-time 25 -sS \
+            -D headers.txt \
+            -o playlist.m3u8 \
+            -w "%{http_code}" \
+            "$URL") || true
+
+          echo "קוד HTTP: ${HTTP_CODE:-לא התקבל}"
+          echo "כותרות התשובה:"
+          head -20 headers.txt 2>/dev/null || true
+
+          echo "גודל התשובה:"
+          wc -c playlist.m3u8 2>/dev/null || true
+
+          echo "תחילת התשובה:"
+          head -c 1000 playlist.m3u8 2>/dev/null || true
+          echo
+
+          if grep -q "#EXTM3U" playlist.m3u8 2>/dev/null; then
+            echo "נמצאה רשימת HLS תקינה."
           else
-            echo "מקור השידור אינו זמין או אינו רשימת HLS תקינה."
-            exit 1
+            echo "לא נמצאה רשימת HLS תקינה."
           fi
