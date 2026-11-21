@@ -23,18 +23,21 @@ jobs:
             "$URL") || true
 
           echo "קוד HTTP: ${HTTP_CODE:-לא התקבל}"
+
           echo "כותרות התשובה:"
           head -20 headers.txt 2>/dev/null || true
 
           echo "גודל התשובה:"
           wc -c playlist.m3u8 2>/dev/null || true
 
-          echo "תחילת התשובה:"
+          echo "תוכן התשובה:"
           head -c 1000 playlist.m3u8 2>/dev/null || true
           echo
 
           if grep -q "#EXTM3U" playlist.m3u8 2>/dev/null; then
-            echo "נמצאה רשימת HLS תקינה."
+            echo "נמצאה רשימת HLS – השידור זמין לבדיקה."
+          elif [ "$HTTP_CODE" = "404" ]; then
+            echo "השידור כבוי כרגע – ממשיכים להמתין."
           else
-            echo "לא נמצאה רשימת HLS תקינה."
+            echo "מקור השידור אינו זמין. קוד HTTP: $HTTP_CODE"
           fi
