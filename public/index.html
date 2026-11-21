@@ -5,51 +5,113 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>תחנת השידור שלי</title>
+
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+
 <style>
-*{box-sizing:border-box}
-body{
-  margin:0;padding:25px;
-  background:linear-gradient(135deg,#101827,#172554,#312e81);
-  color:white;font-family:Arial,sans-serif;
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: linear-gradient(135deg,#101827,#172554,#312e81);
+  color: white;
+  font-family: Arial, sans-serif;
 }
-main{max-width:900px;margin:auto}
-.panel,.card{
-  background:#ffffff12;border:1px solid #ffffff25;
-  border-radius:20px;padding:22px;margin-bottom:18px;
+
+main {
+  max-width: 900px;
+  margin: auto;
 }
-h1{font-size:38px}
-.subtitle{color:#cbd5e1}
-audio{width:100%;margin-top:20px}
-.status{font-size:20px;font-weight:bold}
-.small{color:#cbd5e1;font-size:14px;line-height:1.7}
+
+.panel, .card {
+  background: #ffffff12;
+  border: 1px solid #ffffff25;
+  border-radius: 20px;
+  padding: 22px;
+  margin-bottom: 18px;
+}
+
+h1 { font-size: 34px; }
+
+.subtitle, .small {
+  color: #cbd5e1;
+  line-height: 1.7;
+}
+
+.status {
+  font-size: 21px;
+  font-weight: bold;
+  margin: 12px 0;
+}
+
+audio {
+  width: 100%;
+  margin-top: 15px;
+}
+
+button {
+  background: #2563eb;
+  color: white;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+ul { padding-right: 22px; }
+
+li { margin: 12px 0; }
+
+a { color: #93c5fd; }
+
 </style>
 </head>
+
 <body>
 <main>
+
 <section class="panel">
+
 <h1>תחנת השידור שלי</h1>
-<p class="subtitle">מערכת שידור חי והקלטה בענן</p>
+<p class="subtitle">
+מערכת שידור חי, ניטור והקלטה אוטומטית
+</p>
 
 <div class="card">
 <h2>שידור חי</h2>
-<div class="status" id="playerStatus">מתחבר למקור השידור...</div>
+
+<div id="playerStatus" class="status">
+מתחבר למקור השידור...
+</div>
+
 <audio id="player" controls></audio>
-<p class="small" id="playerMessage">
-לחץ על הפעלה כדי להאזין לשידור החי.
+
+<p id="playerMessage" class="small">
+לחץ על הפעלה כדי להאזין לשידור.
 </p>
 </div>
 
 <div class="card">
 <h2>מצב המערכת</h2>
-<div id="status">טוען...</div>
+
+<div id="status" class="status">טוען...</div>
+
+<p>מצב הקלטה: <span id="recording">בודק...</span></p>
+<p>בדיקה אחרונה: <span id="lastCheck">—</span></p>
 <p>מספר הקלטות: <span id="count">—</span></p>
+
+<button onclick="updateStatus()">רענן מצב</button>
 </div>
 
 <div class="card">
 <h2>ארכיון הקלטות</h2>
-<ul id="recordings"><li>טוען...</li></ul>
+<ul id="recordings">
+<li>טוען הקלטות...</li>
+</ul>
 </div>
+
 </section>
 </main>
 
@@ -61,8 +123,8 @@ const player = document.getElementById("player");
 const playerStatus = document.getElementById("playerStatus");
 const playerMessage = document.getElementById("playerMessage");
 
-function setPlayerStatus(status, message) {
-  playerStatus.textContent = status;
+function setPlayerStatus(title, message) {
+  playerStatus.textContent = title;
   playerMessage.textContent = message;
 }
 
@@ -73,59 +135,92 @@ if (Hls.isSupported()) {
   hls.attachMedia(player);
 
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    setPlayerStatus("השידור מוכן", "לחץ על הפעלה כדי להתחיל להאזין.");
+    setPlayerStatus(
+      "הנגן מוכן",
+      "לחץ על הפעלה כדי להתחיל להאזין."
+    );
   });
 
   hls.on(Hls.Events.ERROR, (event, data) => {
     if (data.fatal) {
       setPlayerStatus(
-        "שגיאה בטעינת השידור",
-        "ייתכן שמקור השידור אינו זמין או חוסם גישה מהאתר."
+        "השידור אינו זמין כרגע",
+        "ייתכן שמקור השידור כבוי או שחוסם גישה."
       );
     }
   });
 
 } else if (player.canPlayType("application/vnd.apple.mpegurl")) {
   player.src = STREAM_URL;
-  setPlayerStatus("השידור מוכן", "לחץ על הפעלה.");
+  setPlayerStatus("הנגן מוכן", "לחץ על הפעלה.");
 
 } else {
   setPlayerStatus(
     "הדפדפן אינו תומך בנגן",
-    "נסה לפתוח בדפדפן שתומך בשידורי HLS."
+    "נסה דפדפן אחר."
   );
 }
 
 async function updateStatus() {
   try {
-    const response = await fetch("/api/status");
+    const response = await fetch("/api/status", {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error("שגיאה בקבלת נתוני השרת");
+    }
+
     const data = await response.json();
 
-    document.getElementById("status").textContent = data.status;
+    document.getElementById("status").textContent =
+      (data.state || "לא ידוע") +
+      " — " +
+      (data.message || "");
+
+    document.getElementById("recording").textContent =
+      data.recording ? "הקלטה פעילה" : "אין הקלטה פעילה";
+
+    document.getElementById("lastCheck").textContent =
+      data.lastCheck
+        ? new Date(data.lastCheck).toLocaleString("he-IL")
+        : "טרם בוצעה בדיקה";
+
+    const files = data.recordings || [];
+
     document.getElementById("count").textContent =
-      data.recordings.length;
+      files.length;
 
     const list = document.getElementById("recordings");
     list.innerHTML = "";
 
-    if (!data.recordings.length) {
-      list.innerHTML = "<li>עדיין אין הקלטות</li>";
+    if (files.length === 0) {
+      list.textContent = "עדיין אין הקלטות";
     }
 
-    data.recordings.forEach(file => {
+    files.forEach(file => {
       const item = document.createElement("li");
-      item.textContent = file.name;
+      const link = document.createElement("a");
+
+      link.href =
+        "/api/recordings/" + encodeURIComponent(file.name);
+
+      link.textContent = file.name;
+      link.download = file.name;
+
+      item.appendChild(link);
       list.appendChild(item);
     });
 
-  } catch {
+  } catch (error) {
     document.getElementById("status").textContent =
-      "השרת עדיין לא הופעל";
+      "השרת עדיין אינו זמין";
   }
 }
 
 updateStatus();
 setInterval(updateStatus, 10000);
 </script>
+
 </body>
 </html>
