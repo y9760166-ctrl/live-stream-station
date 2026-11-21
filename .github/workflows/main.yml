@@ -1,7 +1,8 @@
-
 name: בדיקת שידור אוטומטית
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
@@ -10,6 +11,17 @@ jobs:
   check-stream:
     runs-on: ubuntu-latest
     steps:
+      - name: הורדת קובצי המאגר
+        uses: actions/checkout@v4
+
+      - name: התקנת Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: בדיקת תקינות תחביר JavaScript
+        run: node --check server.js
+
       - name: בדיקת מקור השידור
         run: |
           URL="https://contact.gostreaming.tv/Con-9/tracks-v3a1/mono.ts.m3u8"
