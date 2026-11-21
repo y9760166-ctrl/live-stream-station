@@ -1,0 +1,127 @@
+
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>תחנת השידור שלי</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+  color: white;
+  background: linear-gradient(135deg, #101827, #172554, #312e81);
+}
+main { max-width: 1000px; margin: auto; padding: 35px 20px; }
+.panel {
+  padding: 28px;
+  border: 1px solid #ffffff30;
+  border-radius: 22px;
+  background: #ffffff12;
+  box-shadow: 0 20px 60px #0005;
+}
+h1 { font-size: 42px; margin: 10px 0; }
+.subtitle { color: #cbd5e1; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(190px,1fr));
+  gap: 14px;
+  margin: 22px 0;
+}
+.card {
+  background: #0f172acc;
+  border: 1px solid #ffffff25;
+  border-radius: 16px;
+  padding: 20px;
+}
+.label { color: #94a3b8; font-size: 14px; }
+.value { font-size: 22px; font-weight: bold; margin-top: 9px; }
+video {
+  width: 100%;
+  min-height: 220px;
+  background: black;
+  border-radius: 14px;
+}
+.small { color: #cbd5e1; font-size: 13px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<main>
+<section class="panel">
+<div class="label">מערכת שידור והקלטה בענן</div>
+<h1>תחנת השידור שלי</h1>
+<p class="subtitle">השידור החי שלך במקום אחד</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">מצב המערכת</div>
+    <div class="value" id="status">טוען...</div>
+  </div>
+  <div class="card">
+    <div class="label">מקור השידור</div>
+    <div class="value" id="source">בודק...</div>
+  </div>
+  <div class="card">
+    <div class="label">מספר הקלטות</div>
+    <div class="value" id="count">—</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>נגן שידור חי</h2>
+  <video controls playsinline></video>
+  <p class="small">
+    נגן השידור יתחבר למקור לאחר הגדרת כתובת השידור.
+  </p>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>ארכיון הקלטות</h2>
+  <ul id="recordings">
+    <li>טוען הקלטות...</li>
+  </ul>
+</div>
+</section>
+</main>
+
+<script>
+async function updateStatus() {
+  try {
+    const response = await fetch("/api/status");
+    const data = await response.json();
+
+    document.getElementById("status").textContent =
+      data.status;
+
+    document.getElementById("source").textContent =
+      data.sourceConfigured ? "הוגדר" : "לא הוגדר";
+
+    document.getElementById("count").textContent =
+      data.recordings.length;
+
+    const list = document.getElementById("recordings");
+    list.innerHTML = "";
+
+    if (data.recordings.length === 0) {
+      list.innerHTML = "<li>עדיין אין הקלטות</li>";
+    }
+
+    data.recordings.forEach(file => {
+      const item = document.createElement("li");
+      item.textContent = file.name;
+      list.appendChild(item);
+    });
+
+  } catch (error) {
+    document.getElementById("status").textContent =
+      "אין חיבור לשרת";
+  }
+}
+
+updateStatus();
+setInterval(updateStatus, 10000);
+</script>
+</body>
+</html>
