@@ -77,7 +77,7 @@ jobs:
                   ffmpeg -hide_banner -loglevel warning \
                     -rw_timeout 15000000 \
                     -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 10 \
-                    -i "$URL" -map 0 -c copy \
+                    -i "$URL" -map 0:a:0 -c:a copy \
                     -f segment -segment_time 3600 -reset_timestamps 1 \
                     -strftime 1 "recordings/recording-%Y%m%d-%H%M%S.ts" \
                     > recordings/ffmpeg.log 2>&1 &
@@ -107,7 +107,30 @@ jobs:
           echo "חלון הניטור הסתיים."
           stop_recorder
 
-      - name: העלאת ההקלטות ל-Google Drive
+      - name: איחוד קובצי TS לקובץ MP4 אחד
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          TS_FILES=(recordings/recording-*.ts)
+          if [ ${#TS_FILES[@]} -eq 0 ]; then
+            echo "לא נמצאו קובצי TS; אין מה להמיר."
+            exit 0
+          fi
+
+          LIST_FILE="$RUNNER_TEMP/ts-files.txt"
+          : > "$LIST_FILE"
+          for file in "${TS_FILES[@]}"; do
+            printf "file '%s/%s'\\n" "$GITHUB_WORKSPACE" "$file" >> "$LIST_FILE"
+          done
+
+          ffmpeg -hide_banner -loglevel warning -f concat -safe 0 \
+            -i "$LIST_FILE" -map 0:a:0 -c:a aac -b:a 128k \
+            -movflags +faststart "recordings/live-replay-${GITHUB_RUN_NUMBER}.mp4"
+
+          echo "נוצר קובץ MP4 מאוחד."
+
+      - name: העלאת קובץ ה-MP4 ל-Google Drive
         if: always()
         env:
           RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }}
@@ -116,18 +139,14 @@ jobs:
             echo "טרם הוגדר סוד RCLONE_CONFIG ב-GitHub; דילוג על העלאה לדרייב."
             exit 0
           fi
+          if ! compgen -G "recordings/*.mp4" > /dev/null; then
+            echo "לא נוצר קובץ MP4; אין מה להעלות."
+            exit 0
+          fi
           sudo apt-get update
           sudo apt-get install -y rclone
           mkdir -p "$HOME/.config/rclone"
           printf '%s' "$RCLONE_CONFIG_CONTENT" > "$HOME/.config/rclone/rclone.conf"
-          rclone copy recordings "gdrive1:LiveStreamStation/${GITHUB_RUN_NUMBER}" --transfers 2 --checkers 4
-          echo "ההעלאה ל-Google Drive הסתיימה."
-
-      - name: שמירת ההקלטות כקובצי הורדה
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: live-recordings-${{ github.run_number }}
-          path: recordings/
-          if-no-files-found: warn
-          retention-days: 90
+          rclone copy recordings "gdrive1:LiveStreamStation/${GITHUB_RUN_NUMBER}" \
+            --include "*.mp4" --transfers 2 --checkers 4
+          echo "העלאת קובץ ה-MP4 ל-Google Drive הסתיימה."
