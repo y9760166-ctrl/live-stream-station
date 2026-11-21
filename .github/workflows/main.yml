@@ -1,55 +1,117 @@
-name: בדיקת שידור אוטומטית
+name: הקלטת שידור אוטומטית
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 */6 * * *"
+
+concurrency:
+  group: live-stream-recorder
+  cancel-in-progress: false
 
 jobs:
-  check-stream:
+  record-stream:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - name: הורדת קובצי המאגר
         uses: actions/checkout@v4
 
-      - name: התקנת Node.js
+      - name: התקנת Node.js ובדיקת הקוד
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: בדיקת תקינות תחביר JavaScript
+      - name: בדיקת תחביר
         run: node --check server.js
 
-      - name: בדיקת מקור השידור
+      - name: התקנת FFmpeg
         run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: ניטור והקלטת השידור
+        shell: bash
+        run: |
+          set -u
           URL="https://contact.gostreaming.tv/Con-9/tracks-v3a1/mono.ts.m3u8"
+          mkdir -p recordings
+          REC_PID=""
+          LAST_SIGNATURE=""
+          MISSES=0
+          DEADLINE=$((SECONDS + 330 * 60))
 
-          echo "בודק את מקור השידור..."
+          stop_recorder() {
+            if [ -n "$REC_PID" ] && kill -0 "$REC_PID" 2>/dev/null; then
+              echo "עוצר הקלטה..."
+              kill -INT "$REC_PID" 2>/dev/null || true
+              wait "$REC_PID" || true
+            fi
+            REC_PID=""
+          }
+          trap stop_recorder EXIT
 
-          HTTP_CODE=$(curl -L --max-time 25 -sS \
-            -D headers.txt \
-            -o playlist.m3u8 \
-            -w "%{http_code}" \
-            "$URL") || true
+          echo "הניטור התחיל. משך הרצה מרבי: 5 שעות וחצי."
 
-          echo "קוד HTTP: ${HTTP_CODE:-לא התקבל}"
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            if [ -n "$REC_PID" ] && ! kill -0 "$REC_PID" 2>/dev/null; then
+              echo "תהליך FFmpeg הסתיים."
+              wait "$REC_PID" || true
+              REC_PID=""
+            fi
 
-          echo "כותרות התשובה:"
-          head -20 headers.txt 2>/dev/null || true
+            if curl -L --max-time 15 -fsS "$URL" -o /tmp/live-playlist.m3u8 &&
+               grep -q "#EXTM3U" /tmp/live-playlist.m3u8 &&
+               ! grep -q "#EXT-X-ENDLIST" /tmp/live-playlist.m3u8; then
 
-          echo "גודל התשובה:"
-          wc -c playlist.m3u8 2>/dev/null || true
+              LAST_SEGMENT=$(grep -v '^#' /tmp/live-playlist.m3u8 | sed '/^[[:space:]]*$/d' | tail -n 1)
+              MEDIA_SEQUENCE=$(grep '^#EXT-X-MEDIA-SEQUENCE:' /tmp/live-playlist.m3u8 | tail -n 1 || true)
+              SIGNATURE="${MEDIA_SEQUENCE}|${LAST_SEGMENT}"
 
-          echo "תוכן התשובה:"
-          head -c 1000 playlist.m3u8 2>/dev/null || true
-          echo
+              if [ -n "$LAST_SEGMENT" ] && [ "$SIGNATURE" != "$LAST_SIGNATURE" ]; then
+                LAST_SIGNATURE="$SIGNATURE"
+                MISSES=0
 
-          if grep -q "#EXTM3U" playlist.m3u8 2>/dev/null; then
-            echo "נמצאה רשימת HLS – השידור זמין לבדיקה."
-          elif [ "$HTTP_CODE" = "404" ]; then
-            echo "השידור כבוי כרגע – ממשיכים להמתין."
-          else
-            echo "מקור השידור אינו זמין. קוד HTTP: $HTTP_CODE"
-          fi
+                if [ -z "$REC_PID" ]; then
+                  echo "זוהו מקטעים חדשים. מתחיל הקלטה."
+                  ffmpeg -hide_banner -loglevel warning \
+                    -rw_timeout 15000000 \
+                    -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 10 \
+                    -i "$URL" -map 0 -c copy \
+                    -f segment -segment_time 3600 -reset_timestamps 1 \
+                    -strftime 1 "recordings/recording-%Y%m%d-%H%M%S.ts" \
+                    > recordings/ffmpeg.log 2>&1 &
+                  REC_PID=$!
+                else
+                  echo "השידור פעיל; ההקלטה נמשכת."
+                fi
+              else
+                MISSES=$((MISSES + 1))
+                echo "רשימת השידור לא התקדמה ($MISSES/3)."
+              fi
+            else
+              MISSES=$((MISSES + 1))
+              echo "מקור השידור אינו זמין כרגע ($MISSES/3)."
+            fi
+
+            if [ "$MISSES" -ge 3 ] && [ -n "$REC_PID" ]; then
+              stop_recorder
+              LAST_SIGNATURE=""
+              MISSES=0
+              echo "השידור נעצר; ממתין לחידושו."
+            fi
+
+            sleep 20
+          done
+
+          echo "חלון הניטור הסתיים."
+          stop_recorder
+
+      - name: שמירת ההקלטות כקובצי הורדה
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-recordings-${{ github.run_number }}
+          path: recordings/
+          if-no-files-found: warn
+          retention-days: 90
