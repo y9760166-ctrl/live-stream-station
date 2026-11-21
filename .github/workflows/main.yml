@@ -110,16 +110,16 @@ jobs:
       - name: העלאת ההקלטות ל-Google Drive
         if: always()
         env:
-          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }}
         run: |
-          if [ -z "${RCLONE_CONFIG:-}" ]; then
+          if [ -z "${RCLONE_CONFIG_CONTENT:-}" ]; then
             echo "טרם הוגדר סוד RCLONE_CONFIG ב-GitHub; דילוג על העלאה לדרייב."
             exit 0
           fi
           sudo apt-get update
           sudo apt-get install -y rclone
           mkdir -p "$HOME/.config/rclone"
-          printf '%s' "$RCLONE_CONFIG" > "$HOME/.config/rclone/rclone.conf"
+          printf '%s' "$RCLONE_CONFIG_CONTENT" > "$HOME/.config/rclone/rclone.conf"
           rclone copy recordings "gdrive:LiveStreamStation/${GITHUB_RUN_NUMBER}" --transfers 2 --checkers 4
           echo "ההעלאה ל-Google Drive הסתיימה."
 
